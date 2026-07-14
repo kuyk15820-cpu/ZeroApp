@@ -39,7 +39,8 @@
         self.title = @"TT-Tool";
     }
 
-    Class wrapperClass = NSClassFromString(@"MainViewWrapper");
+    // [เปลี่ยนจุดนี้] จากเดิม "MainViewWrapper" เป็น "SwiftViewFactory" เพื่อให้ตรงกับโครงสร้าง Factory ใหม่
+    Class wrapperClass = NSClassFromString(@"SwiftViewFactory");
     if (wrapperClass) {
         __weak typeof(self) weakSelf = self;
         
@@ -119,47 +120,54 @@
         [dateFormatter setDateFormat:@"yyMMddHHmmss"];
         NSString *timeStamp = [dateFormatter stringFromDate:[NSDate date]];
         
-        NSString *inputPath = [tempDir stringByAppendingPathComponent:[NSString stringWithFormat:@"Input_%@.MP4", timeStamp]];
-        NSString *outputPath = [tempDir stringByAppendingPathComponent:[NSString stringWithFormat:@"Output_%@.MP4", timeStamp]];
-        
-        [[NSFileManager defaultManager] removeItemAtPath:inputPath error:nil];
-        [[NSFileManager defaultManager] removeItemAtPath:outputPath error:nil];
-        [[NSFileManager defaultManager] copyItemAtPath:url.path toPath:inputPath error:nil];
-        
-        // ประกอบคำสั่งและเริ่มประมวลผลผ่านคลัง FFmpegKit
-        NSString *cmd = [NSString stringWithFormat:@"-itsscale %f -i %@ -codec copy %@", self.currentScale, inputPath, outputPath];
-        
-        [FFmpegKit executeAsync:cmd withCompleteCallback:^(id<Session> session) {
-            ReturnCode *code = [session getReturnCode];
+        @try {
+            NSString *inputPath = [tempDir stringByAppendingPathComponent:[NSString stringWithFormat:@"Input_%@.MP4", timeStamp]];
+            NSString *outputPath = [tempDir stringByAppendingPathComponent:[NSString stringWithFormat:@"Output_%@.MP4", timeStamp]];
             
-            dispatch_async(dispatch_get_main_queue(), ^{
-                [self.spinner stopAnimating];
-                if ([ReturnCode isSuccess:code]) {
-                    // ส่งวิดีโอผลลัพธ์กลับเข้าไปบันทึกไว้ในม้วนฟิล์มคลังภาพ
-                    [[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
-                        [PHAssetChangeRequest creationRequestForAssetFromVideoAtFileURL:[NSURL fileURLWithPath:outputPath]];
-                    } completionHandler:^(BOOL success, NSError * _Nullable error) {
-                        
-                        // ล้างและทำลายแคชไฟล์ขยะทั้งหมดใน Sandbox ทันทีเมื่อเสร็จสิ้นภารกิจ
+            [[NSFileManager defaultManager] removeItemAtPath:inputPath error:nil];
+            [[NSFileManager defaultManager] removeItemAtPath:outputPath error:nil];
+            [[NSFileManager defaultManager] copyItemAtPath:url.path toPath:inputPath error:nil];
+            
+            // ประกอบคำสั่งและเริ่มประมวลผลผ่านคลัง FFmpegKit
+            NSString *cmd = [NSString stringWithFormat:@"-itsscale %f -i %@ -codec copy %@", self.currentScale, inputPath, outputPath];
+            
+            [FFmpegKit executeAsync:cmd withCompleteCallback:^(id<Session> session) {
+                ReturnCode *code = [session getReturnCode];
+                
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    [self.spinner stopAnimating];
+                    if ([ReturnCode isSuccess:code]) {
+                        // ส่งวิดีโอผลลัพธ์กลับเข้าไปบันทึกไว้ในม้วนฟิล์มคลังภาพ
+                        [[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
+                            [PHAssetChangeRequest creationRequestForAssetFromVideoAtFileURL:[NSURL fileURLWithPath:outputPath]];
+                        } completionHandler:^(BOOL success, NSError * _Nullable error) {
+                            
+                            // ล้างและทำลายแคชไฟล์ขยะทั้งหมดใน Sandbox ทันทีเมื่อเสร็จสิ้นภารกิจ
+                            [[NSFileManager defaultManager] removeItemAtPath:inputPath error:nil];
+                            [[NSFileManager defaultManager] removeItemAtPath:outputPath error:nil];
+                            
+                            dispatch_async(dispatch_get_main_queue(), ^{
+                                if (success) {
+                                    [self showStatusAlert:@"แปลงไฟล์และบันทึกลงคลังภาพความละเอียด 1080p สำเร็จ!"];
+                                } else {
+                                    [self showStatusAlert:@"แปลงสำเร็จแต่บันทึกลงอัลบั้มไม่ได้ ตรวจสอบสิทธิ์เข้าถึงคลังภาพ"];
+                                }
+                            });
+                        }];
+                    } else {
+                        // ล้างไฟล์ขยะหากเกิดเหตุการณ์รันล้มเหลว
                         [[NSFileManager defaultManager] removeItemAtPath:inputPath error:nil];
                         [[NSFileManager defaultManager] removeItemAtPath:outputPath error:nil];
-                        
-                        dispatch_async(dispatch_get_main_queue(), ^{
-                            if (success) {
-                                [self showStatusAlert:@"แปลงไฟล์และบันทึกลงคลังภาพความละเอียด 1080p สำเร็จ!"];
-                            } else {
-                                [self showStatusAlert:@"แปลงสำเร็จแต่บันทึกลงอัลบั้มไม่ได้ ตรวจสอบสิทธิ์เข้าถึงคลังภาพ"];
-                            }
-                        });
-                    }];
-                } else {
-                    // ล้างไฟล์ขยะหากเกิดเหตุการณ์รันล้มเหลว
-                    [[NSFileManager defaultManager] removeItemAtPath:inputPath error:nil];
-                    [[NSFileManager defaultManager] removeItemAtPath:outputPath error:nil];
-                    [self showStatusAlert:@"คำสั่ง FFmpeg ทำงานล้มเหลว"];
-                }
+                        [self showStatusAlert:@"คำสั่ง FFmpeg ทำงานล้มเหลว"];
+                    }
+                });
+            }];
+        } @catch (NSException *exception) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [self.spinner stopAnimating];
+                [self showStatusAlert:@"เกิดข้อผิดพลาดภายในระบบไฟล์"];
             });
-        }];
+        }
     }];
 }
 
