@@ -1,5 +1,6 @@
 #import "MainApplicationDelegate.h"
 #import "SplashAnimation.h"
+#import "RootViewController.h" // นำเข้า RootViewController เพื่อเรียกใช้งาน
 
 @implementation MainApplicationDelegate {
     UIViewController *_rootViewController; 
@@ -33,18 +34,11 @@
         
         [[SplashAnimation sharedInstance] showWithRepeatCount:1 completion:^{
             
-            // [แก้ไขตรงนี้] เปลี่ยนมาใช้การเรียกคลาส Swift แบบ Dynamic Bypass ข้อจำกัดของ Theos Compiler
-            Class factoryClass = NSClassFromString(@"SwiftViewFactory");
-            if (factoryClass) {
-                #pragma clang diagnostic push
-                #pragma clang diagnostic ignored "-Warc-performSelector-leaks"
-                self->_rootViewController = [factoryClass performSelector:NSSelectorFromString(@"createMainView")];
-                #pragma clang diagnostic pop
-            } else {
-                // เผื่อไว้ในกรณีฉุกเฉินหาคลาสไม่เจอจริงๆ ให้ขึ้นหน้าเปล่าสีดำไว้ไม่ให้แอปเด้ง
-                self->_rootViewController = [[UIViewController alloc] init];
-                self->_rootViewController.view.backgroundColor = [UIColor blackColor];
-            }
+            // [แก้ไขตรงนี้] เรียกใช้งาน RootViewController ตรง ๆ แทนการเรียกใช้โรงงาน Swift ข้ามหัวระบบ
+            RootViewController *rootVC = [[RootViewController alloc] init];
+            
+            // นำ RootViewController ไปใส่ใน UINavigationController เพื่อให้แสดงผล Navigation Bar (TT-Tool) ด้านบน
+            self->_rootViewController = [[UINavigationController alloc] initWithRootViewController:rootVC];
             
             [UIView transitionWithView:self->_mainContainer.view
                               duration:0.5
