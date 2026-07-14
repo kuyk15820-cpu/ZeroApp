@@ -1,16 +1,6 @@
 import SwiftUI
 // import PartyUI // เปิดใช้ถ้าติดตั้งผ่าน package เรียบร้อย
 
-@objc(MainViewWrapper)
-class MainViewWrapper: NSObject {
-    @objc static func createMainView(onSelectVideo: @escaping () -> Void) -> UIViewController {
-        let mainView = MainView(onSelectVideo: onSelectVideo)
-        let hostingController = UIHostingController(rootView: mainView)
-        hostingController.view.backgroundColor = .black
-        return hostingController
-    }
-}
-
 struct MainView: View {
     var onSelectVideo: () -> Void // ตัวส่งสัญญาณกลับไปฝั่ง Obj-C
     
